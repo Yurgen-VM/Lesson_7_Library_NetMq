@@ -22,24 +22,28 @@ namespace Core
         {
             var join = new Message { Text = _user.Name, Command = Command.Join };
             await _source.SendMessage(join, _serverEP, CancellationToken);
-
+            // Task.Run(ClientSender);
             Task.Run(Listener);
+
+
+            //await Task.Run(Listener);
 
             while (!CancellationToken.IsCancellationRequested)
             {
-                string input = (await Console.In.ReadLineAsync()) ?? String.Empty;
+                Console.WriteLine("Введите сообщение");
+                string inputText = (await Console.In.ReadLineAsync()) ?? String.Empty;
+                Console.WriteLine("Укажите получателя");
+                string inputRecipient = (await Console.In.ReadLineAsync()) ?? String.Empty;
                 Message message;
-                if (input.Trim().ToLower() == "exit")
+                if (inputText.Trim().ToLower() == "exit")
                 {
-                    message = new() {SenderId = _user.Id, Command = Command.Exit };
+                    message = new() { SenderId = _user.Id, Command = Command.Exit };
                 }
                 else
                 {
-                    message = new() { Text = input, SenderId = _user.Id, Command = Command.None };
+                    message = new() { Text = inputText, RecipientName = inputRecipient, SenderName = _user.Name, Command = Command.None };
                 }
                 await _source.SendMessage(message, _serverEP, CancellationToken);
-
-
             }
         }
 
@@ -75,50 +79,27 @@ namespace Core
             }
         }
 
-        private User GetUser()
-        {
-            return _user;
-        }
-
-        //public async Task ClientSender()
-        //{
-        //    while (true)
-        //    {
-        //        Console.WriteLine("Введите сообщение");
-        //        string? message = Console.ReadLine();
-        //        Console.WriteLine("Укажите имя получателя");
-        //        string? recipient = Console.ReadLine();
-        //        if (string.IsNullOrEmpty(recipient))
-        //        {
-        //            continue;
-        //        }
-        //        var msgJson = new Message()
-        //        {
-        //            Text = message!,
-        //            RecepientId = _name,
-        //            ToName = recipient,
-        //            Command = Command.Message
-
-        //        };
-        //        _messageSource.SendMessage(msgJson, serverEP);
-        //    }
-        //}
-
 
         private void MessageHandler(Message message)
         {
-            Console.WriteLine($"{_users.First(u => u.Id == message.SenderId)}: {message.Text}"); ;
+            Console.WriteLine($"Сообщение от {message.SenderName}: {message.Text}");
         }
 
         private void UsersHandler(Message message)
         {
             _users = message.Users;
+            Console.Write("Пользователи on-line: ");
+            foreach (User user in _users)
+            {
+                Console.Write(user.Name + " ");
+            }
+            Console.WriteLine();
         }
 
         private void JoinHandler(Message message)
         {
             _user.Id = message.RecepientId;
-            Console.WriteLine("Join success");
+            Console.WriteLine($"Сообщение от {message.SenderName}: {message.Text}");
         }
     }
 }

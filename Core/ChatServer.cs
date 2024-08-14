@@ -30,7 +30,7 @@ namespace Core
             while (!CancellationToken.IsCancellationRequested)
             {
                 try
-                {                   
+                {
                     ReceiveResult result = await _source.ReceiveMessage(CancellationToken);
                     if (result.message is null)
                     {
@@ -77,20 +77,19 @@ namespace Core
 
         private async Task MessageHandller(ReceiveResult result)
         {
-            if (result.message.RecepientId < 0)
+            Console.WriteLine($"Получено сообщение {result.message.Text} от {result.message.SenderName} для {result.message.RecipientName}");
+
+            //  Проверяем есть ли получатель в базе данных
+
+            var userEntity = await _context.Users.FirstOrDefaultAsync(n => n.Name == result.message.RecipientName);
+
+            if (userEntity == null) // Если получаетеля не существует, пересылаем сообщение всем пользователям
             {
                 await SendAllAsync(result.message);
             }
             else
             {
-                await _source.SendMessage
-                (
-                result.message,
-                _users.First(u => u.Id == result.message.SenderId).endPoint!,
-                CancellationToken
-                );
-
-                var recipientEndPoint = _users.FirstOrDefault(u => u.Id == result.message.SenderId)?.endPoint;
+                var recipientEndPoint = _users.FirstOrDefault(u => u.Name == result.message.RecipientName)?.endPoint;
 
                 if (recipientEndPoint is not null)
                 {
@@ -104,32 +103,16 @@ namespace Core
             }
         }
 
-        // Метод для подтверждения получения сообщения
-        public static void ConfirmMessageReceived(int? id)
-        {
-            Console.WriteLine("Сообщение принято id = " + id);
-
-            // Изменяем статус получения сообщения в базе данных
-            using (ChatContext ctx = new ChatContext())
-            {
-                var msg = ctx.Messages.FirstOrDefault(x => x.Id == id);
-                if (msg != null)
-                {
-                    msg.DeliveryStatus = true;
-                    ctx.SaveChanges();
-                }
-            }
-        }
-
-
         private async Task JoinHandller(ReceiveResult result)
         {
             //Добавляем пользователя в базу данных (если его еще там нет)
             using (ChatContext ctx = new ChatContext())
             {
-                if (ctx.Users.FirstOrDefault(x => x.Name == result.message.Text) != null) return;
-                ctx.Add(new UserEntity { Name = result.message.Text, LastOnLine = DateTime.UtcNow });
-                ctx.SaveChanges();
+                if (ctx.Users.FirstOrDefault(x => x.Name == result.message.Text) == null)
+                {
+                    ctx.Add(new UserEntity { Name = result.message.Text, LastOnLine = DateTime.UtcNow });
+                    ctx.SaveChanges();
+                }
             }
 
             User? user = _users.FirstOrDefault(u => u.Name == result.message.Text);
@@ -140,18 +123,15 @@ namespace Core
             }
             user.endPoint = result.EndPoint;
 
-            await _source.SendMessage
-                (
-                new Message { Command = Command.Join, RecepientId = user.Id },
-                user.endPoint,
-                CancellationToken
-                );
 
-            await SendAllAsync(new Message { Command = Command.Confirm, Text = $"{user.Name} присоединился к чату" });
-            await SendAllAsync(new Message { Command = Command.Users, RecepientId = user.Id, Users = _users });
-            
+            await SendAllAsync(new Message { Command = Command.Join, SenderName = "Server", Text = $"{user.Name} присоединился к чату" });
+
+            // Отпрвляем список пользователей on-line
+
+            await SendAllAsync(new Message { Command = Command.Users, RecipientName = user.Name, Users = _users });
+
             var unreaded = await _context.Messages.Where(u => u.RecepientId == user.Id).ToListAsync();
-            foreach( var message in unreaded )
+            foreach (var message in unreaded)
             {
                 await _source.SendMessage
                 (
@@ -169,7 +149,7 @@ namespace Core
                 await _source.SendMessage
                (
                message,
-               user.endPoint,
+               user.endPoint!,
                CancellationToken
                );
             }
